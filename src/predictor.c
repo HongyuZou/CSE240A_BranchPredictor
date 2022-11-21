@@ -41,7 +41,7 @@ int verbose;
  * Ghare 
  */
 uint8_t *gshare_pattern_table = NULL;
-int32_t global_branch_history = 0; // shared with tournament
+int32_t global_branch_history = 0; // shared with tournament, custom
 uint32_t bit_mask = 0; // global history bitmask
 
 uint8_t* init_gshare_pattern_table() {
@@ -77,7 +77,7 @@ uint8_t *global_pattern_table = NULL; // global pred table
 uint8_t *local_pattern_table = NULL;
 uint32_t *local_history_table = NULL;
 
-uint8_t *choice_table = NULL;
+uint8_t *choice_table = NULL;  // shared with custom
 
 uint32_t local_bit_mask = 0;
 uint32_t pc_bit_mask = 0;
@@ -144,6 +144,42 @@ uint8_t* init_local_pattern_table() {
   return local_pattern_table;
 }
 
+/*
+ * Custom
+ */
+
+// bimode hisotry table
+uint8_t* global_pattern_t = NULL;
+uint8_t* global_pattern_nt = NULL;
+
+void init_custom_tables() {
+  ghistoryBits = 11;
+
+  // calculate history table size
+  uint32_t history_table_size = 1;
+  for (int i = 0; i < ghistoryBits; i += 1) {
+    history_table_size *= 2;
+  }
+
+  // init history table
+  global_pattern_t = (uint8_t*)malloc(sizeof(uint8_t) * history_table_size);
+  for (int i = 0; i < history_table_size; i ++) {
+    global_pattern_t[i] = 2; // weakly no
+  }
+
+  // init history table
+  global_pattern_nt = (uint8_t*)malloc(sizeof(uint8_t) * history_table_size);
+  for (int i = 0; i < history_table_size; i ++) {
+    global_pattern_nt[i] = 1; // weakly no
+  }
+
+  // init choice table
+  choice_table = (uint8_t*)malloc(sizeof(uint8_t) * history_table_size);
+  for (int i = 0; i < history_table_size; i ++) {
+    choice_table[i] = 1; // weakly global
+  }
+}
+
 //------------------------------------//
 //        Predictor Functions         //
 //------------------------------------//
@@ -167,8 +203,10 @@ init_predictor()
       init_local_history_table();
       init_local_pattern_table();
       init_tour_global_table();
+      break;
 
-    default:
+    case CUSTOM:
+      init_custom_tables();
       break;
   }
 }
@@ -228,6 +266,18 @@ make_prediction(uint32_t pc)
 
       break;
     case CUSTOM:
+      bit_mask = generate_bit_mask(ghistoryBits);
+      uint32_t history_idx = ((global_branch_history ^ pc) & bit_mask);
+      uint32_t choice_idx = (pc & bit_mask);
+      pattern = (choice_table[choice_idx] >= 2) ? global_pattern_t[history_idx] : global_pattern_nt[history_idx];
+      
+      // make prediction
+      if (pattern == ST || pattern == WT) {
+        return TAKEN;
+      } else {
+        return NOTTAKEN;
+      }
+
       break;
   }
 
@@ -266,7 +316,7 @@ train_predictor(uint32_t pc, uint8_t outcome)
       break;
     case TOURNAMENT:
 
-      //update_global_table
+      // update_global_table
       bit_mask = generate_bit_mask(ghistoryBits);
       int32_t global_pattern_idx = (global_branch_history & bit_mask);
       uint8_t global_pattern = global_pattern_table[global_pattern_idx];
@@ -313,6 +363,37 @@ train_predictor(uint32_t pc, uint8_t outcome)
       }
       break;
     case CUSTOM:
+      bit_mask = generate_bit_mask(ghistoryBits);
+      uint32_t history_idx = ((pc ^ global_branch_history) & bit_mask);
+      uint32_t choice_idx = (pc & bit_mask);
+      uint8_t choice_taken = (choice_table[choice_idx] >= 2) ? TAKEN : NOTTAKEN;
+      uint32_t custom_pattern = (choice_taken == 1) ? global_pattern_t[history_idx] : global_pattern_nt[history_idx];
+      uint8_t pred_res = (custom_pattern >= 2) ? TAKEN : NOTTAKEN; 
+
+      // choice: 0 1 2 3
+      // pattern: N, n, t, T
+
+      // update choice table
+      if (!(choice_taken != outcome && pred_res == outcome)) {
+        // update global table
+        if (outcome == NOTTAKEN && choice_table[choice_idx] != SN) {
+          choice_table[choice_idx] -= 1;
+        } else if (outcome == TAKEN && choice_table[choice_idx] != ST) {
+          choice_table[choice_idx] += 1;
+        }
+      }
+
+      uint8_t *target_table = (choice_taken == 1) ? global_pattern_t : global_pattern_nt;
+      // update global table
+      if (outcome == NOTTAKEN && custom_pattern != SN) {
+        target_table[history_idx] -= 1;
+      } else if (outcome == TAKEN && custom_pattern != ST) {
+        target_table[history_idx] += 1;
+      }
+
+      // update global history
+      global_branch_history = (global_branch_history << 1) + outcome;
+
       break;
     default:
       break;
@@ -329,4 +410,8 @@ clean_up() {
   free(local_pattern_table);
   free(local_history_table);
   free(choice_table);
+
+  // custom
+  free(global_pattern_t);
+  free(global_pattern_nt);
 }
