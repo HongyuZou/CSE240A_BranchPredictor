@@ -149,11 +149,21 @@ uint8_t* init_local_pattern_table() {
  */
 
 // bimode hisotry table
+// (3 * 2 ^ 11 * 2) + 2 ^ 11 
+// 3 * 2^13 * 2 + 2^13 = 57334 bits
+
+// fp1: 0.801
+// fp2: 1.302
+// int1: 10.254
+// int2: 0.353
+// mm1: 4.264
+// mm2: 6.571
+
 uint8_t* global_pattern_t = NULL;
 uint8_t* global_pattern_nt = NULL;
 
 void init_custom_tables() {
-  ghistoryBits = 11;
+  ghistoryBits = 13;
 
   // calculate history table size
   uint32_t history_table_size = 1;
