@@ -15,6 +15,9 @@ const char *studentName = "Hongyu Zou, Shicheng Fan";
 const char *studentID   = "A14553614, A14824899";
 const char *email       = "hoz054@ucsd.edu, shfan@ucsd.edu";
 
+// create file for output
+FILE *fp_choice;
+  
 //------------------------------------//
 //      Predictor Configuration       //
 //------------------------------------//
@@ -163,7 +166,6 @@ uint8_t* global_pattern_t = NULL;
 uint8_t* global_pattern_nt = NULL;
 
 void init_custom_tables() {
-  ghistoryBits = 13;
 
   // calculate history table size
   uint32_t history_table_size = 1;
@@ -199,6 +201,8 @@ void init_custom_tables() {
 void
 init_predictor()
 {
+  fp_choice = fopen ("choice_table", "w+");
+
   //
   //TODO: Initialize Branch Predictor Data Structures
   //
@@ -234,6 +238,7 @@ make_prediction(uint32_t pc)
   
   // pred pattern (0-3)
   uint8_t pattern;
+  char* choice_str;
 
   // Make a prediction based on the bpType
   switch (bpType) {
@@ -259,6 +264,13 @@ make_prediction(uint32_t pc)
       pattern = 0;
 
       // global prediction vs local prediction
+      // choice_str = malloc(sizeof(char) * 3);
+      // choice_str[0] = ('0' + choice);
+      // choice_str[1] = '\n';
+      // choice_str[2] = '\0';
+      // fprintf(stderr, "%s", choice_str);
+      // free(choice_str);
+
       if (choice >= 2) {
         pattern = global_pattern_table[global_branch_history & bit_mask];  
       } else {
@@ -281,6 +293,14 @@ make_prediction(uint32_t pc)
       uint32_t choice_idx = (pc & bit_mask);
       pattern = (choice_table[choice_idx] >= 2) ? global_pattern_t[history_idx] : global_pattern_nt[history_idx];
       
+      // global prediction vs local prediction
+      // choice_str = malloc(sizeof(char) * 3);
+      // choice_str[0] = ('0' + choice_table[choice_idx]);
+      // choice_str[1] = '\n';
+      // choice_str[2] = '\0';
+      // fprintf(stderr, "%s", choice_str);
+      // free(choice_str);
+
       // make prediction
       if (pattern == ST || pattern == WT) {
         return TAKEN;
@@ -305,6 +325,8 @@ train_predictor(uint32_t pc, uint8_t outcome)
   //
   //TODO: Implement Predictor training
   //
+  char* choice_str;
+  uint8_t pred_res;
 
   // Make a prediction based on the bpType
   switch (bpType) {
@@ -325,9 +347,9 @@ train_predictor(uint32_t pc, uint8_t outcome)
        
       break;
     case TOURNAMENT:
-
       // update_global_table
       bit_mask = generate_bit_mask(ghistoryBits);
+      pred_res = make_prediction(pc);
       int32_t global_pattern_idx = (global_branch_history & bit_mask);
       uint8_t global_pattern = global_pattern_table[global_pattern_idx];
 
@@ -371,14 +393,27 @@ train_predictor(uint32_t pc, uint8_t outcome)
           choice_table[global_pattern_idx] += 1;
         }
       }
+      
+      // choice_before, choice_after, prediciton, outcome, 
+      choice_str = malloc(sizeof(char) * 6);
+      choice_str[0] = ('0' + choice);
+      choice_str[1] = ('0' + choice_table[global_pattern_idx]);
+      choice_str[2] = ('0' + pred_res);
+      choice_str[3] = ('0' + outcome);
+      choice_str[4] = '\n';
+      choice_str[5] = '\0';
+      fprintf(stderr, "%s", choice_str);
+      free(choice_str);
+
       break;
     case CUSTOM:
       bit_mask = generate_bit_mask(ghistoryBits);
       uint32_t history_idx = ((pc ^ global_branch_history) & bit_mask);
       uint32_t choice_idx = (pc & bit_mask);
       uint8_t choice_taken = (choice_table[choice_idx] >= 2) ? TAKEN : NOTTAKEN;
+      uint8_t choice_pattern = choice_table[choice_idx];
       uint32_t custom_pattern = (choice_taken == 1) ? global_pattern_t[history_idx] : global_pattern_nt[history_idx];
-      uint8_t pred_res = (custom_pattern >= 2) ? TAKEN : NOTTAKEN; 
+      pred_res = (custom_pattern >= 2) ? TAKEN : NOTTAKEN; 
 
       // choice: 0 1 2 3
       // pattern: N, n, t, T
@@ -392,6 +427,17 @@ train_predictor(uint32_t pc, uint8_t outcome)
           choice_table[choice_idx] += 1;
         }
       }
+
+      // choice_before, choice_after, prediciton, outcome, 
+      choice_str = malloc(sizeof(char) * 6);
+      choice_str[0] = ('0' + choice_pattern);
+      choice_str[1] = ('0' + choice_table[choice_idx]);
+      choice_str[2] = ('0' + pred_res);
+      choice_str[3] = ('0' + outcome);
+      choice_str[4] = '\n';
+      choice_str[5] = '\0';
+      fprintf(stderr, "%s", choice_str);
+      free(choice_str);
 
       uint8_t *target_table = (choice_taken == 1) ? global_pattern_t : global_pattern_nt;
       // update global table
